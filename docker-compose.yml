@@ -1,0 +1,20 @@
+services:
+  silo:
+    image: pgsty/silo:RELEASE.2026-08-06T00-00-00Z
+    container_name: silo
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: Mypassword1234
+    volumes:
+      - silo-data:/data
+    healthcheck:
+      test: ["CMD", "silo", "healthcheck", "ready"]
+      interval: 30s
+
+volumes:
+  silo-data:
