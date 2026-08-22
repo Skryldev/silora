@@ -18,19 +18,18 @@ import (
 var ErrDatabaseClosed = metadata.ErrDatabaseClosed
 
 // PebbleMetadataRepository implements metadata.MetadataRepository using Pebble.
-// It is safe for concurrent use.
 type PebbleMetadataRepository struct {
-	db     *pebble.DB
-	logger *zap.Logger
-	closed atomic.Bool
-	once   sync.Once
+	db        *pebble.DB
+	logger    *zap.Logger
+	closed    atomic.Bool
+	once      sync.Once
+	writeOpts *pebble.WriteOptions
 }
 
 // Compile-time interface check.
 var _ metadata.MetadataRepository = (*PebbleMetadataRepository)(nil)
 
 // NewPebbleMetadataRepository opens or creates a Pebble database at the configured
-// path and returns a ready-to-use metadata repository.
 func NewPebbleMetadataRepository(cfg Config, logger *zap.Logger) (*PebbleMetadataRepository, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid pebble config: %w", err)
@@ -41,7 +40,6 @@ func NewPebbleMetadataRepository(cfg Config, logger *zap.Logger) (*PebbleMetadat
 	}
 
 	opts := cfg.toPebbleOptions()
-
 	db, err := pebble.Open(cfg.Path, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open pebble at %s: %w", cfg.Path, err)
@@ -53,14 +51,20 @@ func NewPebbleMetadataRepository(cfg Config, logger *zap.Logger) (*PebbleMetadat
 		zap.Bool("wal_sync", cfg.WALSync),
 	)
 
+	// Resolve write options based on configuration
+	writeOpts := pebble.NoSync
+	if cfg.WALSync {
+		writeOpts = pebble.Sync
+	}
+
 	return &PebbleMetadataRepository{
-		db:     db,
-		logger: logger,
+		db:        db,
+		logger:    logger,
+		writeOpts: writeOpts,
 	}, nil
 }
 
 // Create persists a new metadata record atomically (primary + secondary index).
-// Returns ErrMetadataAlreadyExists if the ID is already present.
 func (r *PebbleMetadataRepository) Create(ctx context.Context, m *metadata.ObjectMetadata) error {
 	start := time.Now()
 	defer func() { observeWrite(start, nil) }()
@@ -109,7 +113,7 @@ func (r *PebbleMetadataRepository) Create(ctx context.Context, m *metadata.Objec
 		return fmt.Errorf("create: set secondary: %w", err)
 	}
 
-	if err := batch.Commit(pebble.Sync); err != nil {
+	if err := batch.Commit(r.writeOpts); err != nil {
 		return fmt.Errorf("create: commit: %w", err)
 	}
 
@@ -292,7 +296,7 @@ func (r *PebbleMetadataRepository) Update(ctx context.Context, m *metadata.Objec
 		}
 	}
 
-	if err := batch.Commit(pebble.Sync); err != nil {
+	if err := batch.Commit(r.writeOpts); err != nil {
 		return fmt.Errorf("update: commit: %w", err)
 	}
 
@@ -336,7 +340,7 @@ func (r *PebbleMetadataRepository) Delete(ctx context.Context, id string) error 
 			zap.String("id", id),
 			zap.Error(err),
 		)
-		return r.db.Delete(pk, pebble.Sync)
+		return r.db.Delete(pk, r.writeOpts)
 	}
 
 	// Atomic deletion of primary + secondary index.
@@ -352,7 +356,7 @@ func (r *PebbleMetadataRepository) Delete(ctx context.Context, id string) error 
 		return fmt.Errorf("delete: secondary: %w", err)
 	}
 
-	if err := batch.Commit(pebble.Sync); err != nil {
+	if err := batch.Commit(r.writeOpts); err != nil {
 		return fmt.Errorf("delete: commit: %w", err)
 	}
 
@@ -513,7 +517,7 @@ func (r *PebbleMetadataRepository) CreateMany(ctx context.Context, records []*me
 		}
 	}
 
-	if err := batch.Commit(pebble.Sync); err != nil {
+	if err := batch.Commit(r.writeOpts); err != nil {
 		return fmt.Errorf("create_many: commit: %w", err)
 	}
 
@@ -573,7 +577,7 @@ func (r *PebbleMetadataRepository) DeleteMany(ctx context.Context, ids []string)
 		}
 	}
 
-	if err := batch.Commit(pebble.Sync); err != nil {
+	if err := batch.Commit(r.writeOpts); err != nil {
 		return fmt.Errorf("delete_many: commit: %w", err)
 	}
 

@@ -21,12 +21,11 @@ func (r *PebbleMetadataRepository) HealthCheck(ctx context.Context) error {
 	default:
 	}
 
-	// Write a health check marker.
-	if err := r.db.Set(healthCheckKey, healthCheckValue, nil); err != nil {
+	// Use r.writeOpts instead of nil
+	if err := r.db.Set(healthCheckKey, healthCheckValue, r.writeOpts); err != nil {
 		return err
 	}
 
-	// Read it back.
 	val, closer, err := r.db.Get(healthCheckKey)
 	if err != nil {
 		return err

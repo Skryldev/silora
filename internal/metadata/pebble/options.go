@@ -2,7 +2,6 @@ package pebble
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/cockroachdb/pebble"
 )
@@ -104,12 +103,6 @@ func (c *Config) toPebbleOptions() *pebble.Options {
 
 	if c.WALDir != "" {
 		opts.WALDir = c.WALDir
-	}
-
-	if c.WALSync {
-		opts.WALSyncDelay = 0
-	} else {
-		opts.WALSyncDelay = 100 * time.Millisecond
 	}
 
 	return opts
