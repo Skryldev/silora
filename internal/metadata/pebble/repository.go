@@ -459,16 +459,14 @@ func (r *PebbleMetadataRepository) List(ctx context.Context, req *metadata.ListM
 		return nil, fmt.Errorf("list: create iterator: %w", err)
 	}
 
-	// Position at the start.
 	if !iter.First() {
-		// No results; return an empty iterator.
 		iter.Close()
 		return &emptyIterator{}, nil
 	}
 	// Rewind so Next() in the iterator wrapper starts correctly.
 	iter.First()
 
-	return newPebbleMetadataIterator(iter, limit), nil
+	return newPebbleMetadataIterator(r.db, iter, limit), nil
 }
 
 // CreateMany atomically persists multiple metadata records.
